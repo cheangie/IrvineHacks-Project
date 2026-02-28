@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import httpx, os, math
+import httpx, os, math, asyncio
 from dotenv import load_dotenv
 from risk_scorer import calculate_risk
 from ai_service import get_ai_analysis
@@ -66,8 +66,9 @@ async def geocode(address: str):
 #  SRISTI — Climate Risk API Calls
 # ══════════════════════════════════════════════════════════════
 
-# 1. FEMA Flood Zone
-async def get_flood_zone(lat: float, lng: float) -> str:
+# 1. FEMA Flood Zone — with elevation-based fallback
+async def get_flood_zone(lat: float, lng: float, elevation: float = 100.0) -> str:
+    # Try FEMA first
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.get(
@@ -87,7 +88,14 @@ async def get_flood_zone(lat: float, lng: float) -> str:
             return features[0]["attributes"]["FLD_ZONE"]
     except Exception as e:
         print(f"FEMA error: {e}")
-    return "X"
+
+    # Fallback — estimate flood zone from elevation
+    print("Using elevation-based flood zone fallback")
+    if elevation < 0:    return "VE"   # below sea level = coastal/extreme risk
+    if elevation < 5:    return "AE"   # very low = high risk
+    if elevation < 15:   return "A"    # low = moderate-high risk
+    if elevation < 50:   return "B"    # moderate elevation
+    return "X"                          # high elevation = minimal risk
 
 # 2. USFS Wildfire Hazard Potential
 async def get_wildfire_hazard(lat: float, lng: float) -> str:
@@ -112,21 +120,36 @@ async def get_wildfire_hazard(lat: float, lng: float) -> str:
         print(f"Wildfire error: {e}")
     return "Low"
 
-# 3. USGS Elevation
+# 3. USGS Elevation — with Open Elevation API as backup
 async def get_elevation(lat: float, lng: float) -> float:
+    # Try USGS first
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.get(
                 "https://epqs.nationalmap.gov/v1/json",
                 params={"x": lng, "y": lat, "units": "Meters", "wkid": "4326", "includeDate": "false"}
             )
-        return float(res.json().get("value", 100))
+        val = float(res.json().get("value", 0))
+        if val != 0:  # 0 could be a failed response
+            return val
     except Exception as e:
-        print(f"Elevation error: {e}")
-    return 100.0
+        print(f"USGS elevation error: {e}")
 
-# 4. USGS Landslide Inventory
-async def get_landslide_history(lat: float, lng: float) -> int:
+    # Backup — Open Elevation API (free, no key)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(
+                "https://api.open-elevation.com/api/v1/lookup",
+                json={"locations": [{"latitude": lat, "longitude": lng}]}
+            )
+        return float(res.json()["results"][0]["elevation"])
+    except Exception as e:
+        print(f"Open Elevation error: {e}")
+
+    return 100.0  # last resort default
+
+# 4. USGS Landslide Inventory — with elevation-based fallback
+async def get_landslide_history(lat: float, lng: float, elevation: float = 100.0) -> int:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.get(
@@ -146,6 +169,12 @@ async def get_landslide_history(lat: float, lng: float) -> int:
         return int(res.json().get("count", 0))
     except Exception as e:
         print(f"Landslide error: {e}")
+
+    # Fallback — estimate from elevation (higher + steeper = more landslide risk)
+    print("Using elevation-based landslide fallback")
+    if elevation > 1000: return 8
+    if elevation > 500:  return 5
+    if elevation > 200:  return 2
     return 0
 
 # 5. NIFC Historical Fire Perimeter Distance
@@ -192,6 +221,26 @@ async def get_fire_distance(lat: float, lng: float) -> float:
         print(f"Fire distance error: {e}")
     return 999.0
 
+# 6. SRISTI BONUS — NOAA Active Weather Alerts
+async def get_noaa_alerts(lat: float, lng: float) -> list:
+    """Returns list of active flood/weather alerts from NOAA. Bonus data point."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(
+                f"https://api.weather.gov/alerts/active?point={lat},{lng}",
+                headers={"User-Agent": "ClimateCheckApp/1.0"}
+            )
+        if res.status_code == 200:
+            alerts = res.json().get("features", [])
+            return [
+                a["properties"].get("headline", "")
+                for a in alerts
+                if a["properties"].get("headline")
+            ]
+    except Exception as e:
+        print(f"NOAA error: {e}")
+    return []
+
 
 # ══════════════════════════════════════════════════════════════
 #  MAIN ENDPOINT
@@ -202,14 +251,23 @@ def home():
 
 @app.get("/risk")
 async def get_risk(address: str):
-    location         = await geocode(address)
-    lat, lng         = location["lat"], location["lng"]
+    # Geocode first (needed for everything else)
+    location = await geocode(address)
+    lat, lng = location["lat"], location["lng"]
 
-    flood_zone       = await get_flood_zone(lat, lng)
-    wildfire_hazard  = await get_wildfire_hazard(lat, lng)
-    elevation        = await get_elevation(lat, lng)
-    landslide_count  = await get_landslide_history(lat, lng)
-    fire_distance_km = await get_fire_distance(lat, lng)
+    # Get elevation first — needed for flood + landslide fallbacks
+    elevation = await get_elevation(lat, lng)
+
+    # Run remaining 5 API calls in parallel
+    flood_zone, wildfire_hazard, landslide_count, fire_distance_km, noaa_alerts = await asyncio.gather(
+        get_flood_zone(lat, lng, elevation),
+        get_wildfire_hazard(lat, lng),
+        get_landslide_history(lat, lng, elevation),
+        get_fire_distance(lat, lng),
+        get_noaa_alerts(lat, lng),
+    )
+
+    landslide_count = int(landslide_count)
 
     scores = calculate_risk(
         flood_zone       = flood_zone,
@@ -239,6 +297,7 @@ async def get_risk(address: str):
         "elevation_m":      elevation,
         "landslide_nearby": landslide_count,
         "fire_distance_km": fire_distance_km,
+        "active_alerts":    noaa_alerts,
         **scores,
         **ai
     }

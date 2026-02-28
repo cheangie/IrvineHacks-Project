@@ -92,8 +92,12 @@ def calculate_risk(
 
     # Component scores using our agreed formula
     flood     = round(fema      * 0.60 + elev     * 0.40)
-    fire      = round(usfs      * 0.50 + fire_hist * 0.30 + slope * 0.20)
+    fire      = round(usfs      * 0.60 + fire_hist * 0.30 + slope * 0.10)
     landslide = round(slope     * 0.50 + elev      * 0.20 + ls_hist * 0.30)
+
+    # Cap fire score when USFS zone is Low — slope shouldn't override zone rating
+    if wildfire_hazard == "Low":
+        fire = min(fire, 25)
 
     # Overall weighted score
     overall   = round(flood * 0.35 + fire * 0.40 + landslide * 0.25)
