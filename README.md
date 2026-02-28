@@ -1,4 +1,4 @@
-# 🌎 ClimateCheck — Property Climate Risk Scorer
+# Property Climate Risk Scorer
 
 A web app that scores any property's flood and wildfire risk using real climate data APIs and AI-generated explanations.
 
@@ -9,17 +9,28 @@ A web app that scores any property's flood and wildfire risk using real climate 
 ```
 IRVINEHACKS-PROJECT/
 ├── backend/
-│   ├── main.py            ← FastAPI server + API calls (You + Sristi)
-│   ├── risk_scorer.py     ← Risk scoring formula (Nivedha)
-│   ├── ai_service.py      ← Gemini AI integration (Cathryn)
+│   ├── main.py            ← Nivedha (Melissa) + Sristi (FEMA/CalFire)
+│   ├── risk_scorer.py     ← You — scoring formula
+│   ├── ai_service.py      ← Cathryn — Gemini AI
 │   ├── .env               ← API keys — YOU MUST CREATE THIS (not in repo)
-│   └── requirements.txt   ← Python dependencies
+│   └── requirements.txt
 ├── frontend/
 │   ├── index.html
 │   ├── style.css
 │   └── app.js
 └── .gitignore
 ```
+
+---
+
+## 👥 Who Works On What
+
+| Person | File | Task |
+|---|---|---|
+| You | `risk_scorer.py` | Converts raw zone data into 0-100 risk scores |
+| Nivedha | `main.py` → `geocode()` | Melissa API — address to lat/lng |
+| Sristi | `main.py` → `get_flood_zone()` + `get_calfire_zone()` | FEMA + CalFire API calls |
+| Cathryn | `ai_service.py` | Gemini AI — explanation, probabilities, recommendations |
 
 ---
 
@@ -47,70 +58,68 @@ pip install -r requirements.txt
 ```
 
 ### 4. Create your `.env` file
-Inside the `/backend` folder, create a file called `.env` and paste this in:
+Inside `/backend`, create a file called `.env`:
 ```
 MELISSA_KEY=get_this_from_team
 GEMINI_KEY=get_your_own_free_key
 ```
 
-> 🔑 Get your free Gemini key at: https://aistudio.google.com → "Get API Key"
-> 
-> 🔑 Get the Melissa key from your teammate — everyone shares one key.
+> 🔑 **Gemini key** (Cathryn): get it free at https://aistudio.google.com → "Get API Key"
+>
+> 🔑 **Melissa key**: get it from your teammate, everyone shares one
 
-### 5. Run the backend server
-Make sure your venv is active, then:
+### 5. Run the backend
 ```bash
 uvicorn main:app --reload
 ```
+Test at `http://localhost:8000` — should see `{"message": "ClimateCheck API is running!"}`
 
-You should see:
-```
-Uvicorn running on http://127.0.0.1:8000
-```
-
-Test it by going to `http://localhost:8000` in your browser — you should see `{"message": "ClimateCheck API is running!"}`
-
-### 6. Test the risk endpoint
-Go to:
+### 6. Test the full risk endpoint
 ```
 http://localhost:8000/risk?address=123 Main St, Irvine CA
 ```
-You should get back a JSON response with scores and AI analysis.
 
 ### 7. Open the frontend
-Just open `frontend/index.html` directly in your browser. No server needed for the frontend.
+Just open `frontend/index.html` directly in your browser. No extra server needed.
 
 ---
 
-## 👥 Who Works On What
+## 🧪 How to Test Your Piece Independently
 
-| Person | File | Task |
-|---|---|---|
-| You + Sristi | `backend/main.py` | FastAPI server, Melissa + FEMA API calls |
-| Nivedha | `backend/risk_scorer.py` | Flood/fire scoring formula |
-| Cathryn | `backend/ai_service.py` | Gemini AI explanation + probabilities |
-| Everyone later | `frontend/` | UI, charts, report display |
+**You (risk_scorer.py):**
+```bash
+python risk_scorer.py
+# should print {"flood": 90, "fire": 90, "overall": 90}
+```
+
+**Cathryn (ai_service.py):**
+```bash
+python ai_service.py
+# should print a JSON with explanation, recommendations, probabilities
+```
+
+**Nivedha + Sristi (main.py functions):**
+Run the server and hit the `/risk` endpoint in your browser.
 
 ---
 
 ## 🌿 Git Workflow
 
-Always work on your own branch — never commit directly to main:
+Work on your own branch — never commit directly to main:
 
 ```bash
-git checkout -b feature/your-name-task   # create your branch
+git checkout -b feature/your-name-task
 # do your work...
 git add .
 git commit -m "describe what you did"
 git push origin feature/your-name-task
-# then open a Pull Request on GitHub to merge into main
+# open a Pull Request on GitHub to merge into main
 ```
 
 ---
 
 ## ⚠️ Important Notes
-
-- **Never commit your `.env` file** — it's in `.gitignore` for a reason. Share keys over Discord/text.
-- Always make sure your **venv is activated** before running anything (`source venv/bin/activate`)
-- The backend runs on **port 8000**, frontend is just a static file — no port needed
-- If you get a CORS error, make sure the backend is running before opening the frontend
+- **Never commit `.env`** — share keys over Discord/text
+- Always activate venv before running anything: `source venv/bin/activate`
+- Backend runs on **port 8000**, frontend is just a static HTML file
+- If you get a CORS error, make sure the backend server is running first
