@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import httpx, os
+import httpx, os, asyncio
+import urllib.parse
 from dotenv import load_dotenv
 from risk_scorer import calculate_risk
 from ai_service import get_ai_analysis
@@ -23,17 +24,28 @@ MELISSA_KEY = os.getenv("MELISSA_KEY")
 #  Input:  address string
 #  Output: dict with lat, lng, county, fips, neighborhood
 # ══════════════════════════════════════════════════════════════
-async def geocode(address: str) -> dict:
+async def geocode(address: str):
+    address_args = address.split(",")
+    a1 = urllib.parse.quote(address_args[0])
+    admarea = urllib.parse.quote(address_args[2])
+    loc = urllib.parse.quote(address_args[1])
+    postal = urllib.parse.quote(address_args[3])
+
+    query = (
+        "format=JSON&"
+        "opt=USPreferredCityNames:ON,OutputGeo:ON&"
+        f"a1={a1}&"
+        f"admarea={admarea}&"
+        "ctry=US&"
+        f"loc={loc}&"
+        f"postal={postal}&"
+        f"id={MELISSA_KEY}"
+    )
+    url = httpx.URL("https://address.melissadata.net/v3/WEB/GlobalAddress/doGlobalAddress?" + query)
+    
     async with httpx.AsyncClient() as client:
-        res = await client.get(
-            "https://personator.melissadata.net/v3/WEB/ContactVerify/doContactVerify",
-            params={
-                "id": MELISSA_KEY,
-                "act": "GeoCode",
-                "full": address,
-                "format": "json"
-            }
-        )
+        res = await client.get(url)
+
     record = res.json()["Records"][0]
     return {
         "lat":          float(record["Latitude"]),
@@ -175,3 +187,8 @@ async def get_risk(address: str):
         **scores,
         **ai
     }
+
+
+if __name__ == "__main__":
+    result = asyncio.run(geocode("15000 Arroyo Dr,Irvine,CA,92617"))
+    print(result)
