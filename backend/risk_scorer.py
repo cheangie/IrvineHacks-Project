@@ -1,65 +1,102 @@
 """
 YOU own this file.
-Inputs:  flood_zone, wildfire_hazard, elevation, landslide_count
-Output:  {"flood": int, "fire": int, "landslide": int, "overall": int}
+
+Inputs:
+  flood_zone      (str)   — FEMA flood zone e.g. "AE", "X", "VE"
+  wildfire_hazard (str)   — USFS hazard class e.g. "Very High", "High"
+  elevation       (float) — meters above sea level from USGS
+  landslide_count (int)   — # of historical landslide incidents within 15km
+  fire_distance_km(float) — km to nearest historical fire perimeter (NIFC)
+
+Output:
+  {
+    "flood":     int (0-100),
+    "fire":      int (0-100),
+    "landslide": int (0-100),
+    "overall":   int (0-100)
+  }
 """
 
-# FEMA flood zone → base score
+# ── Lookup tables ──────────────────────────────────────────────────────
+
 FLOOD_ZONE_SCORES = {
-    "VE": 95, "V": 95,
-    "AE": 85, "AO": 80, "AH": 80, "A": 75, "AR": 70, "A99": 65,
-    "B":  40, "C":  20, "X":  15, "D": 50,
+    "VE": 95, "V": 95,                          # coastal high velocity
+    "AE": 85, "AO": 82, "AH": 80, "A": 75,     # 100-year floodplain
+    "AR": 70, "A99": 65,                         # protected but at risk
+    "B":  40, "C": 20, "X": 15,                 # minimal risk
+    "D":  50,                                    # undetermined
 }
 
-# USFS wildfire hazard → base score
-WILDFIRE_SCORES = {
+WILDFIRE_HAZARD_SCORES = {
     "Very High": 90,
     "High":      65,
     "Moderate":  35,
     "Low":       10,
 }
 
-def elevation_score(elevation_m: float) -> int:
-    """Lower elevation = higher flood/landslide risk"""
+# ── Sub-factor converters ──────────────────────────────────────────────
+
+def elevation_to_score(elevation_m: float) -> int:
+    """Lower elevation = higher flood + landslide risk"""
     if elevation_m < 10:   return 90
-    if elevation_m < 50:   return 60
-    if elevation_m < 150:  return 30
+    if elevation_m < 50:   return 65
+    if elevation_m < 150:  return 40
+    if elevation_m < 500:  return 20
     return 10
 
 def slope_proxy_score(elevation_m: float) -> int:
     """
-    We don't have slope directly, so we use elevation as a proxy.
+    Proxy for slope steepness using elevation.
     Higher elevation areas in the US tend to have steeper terrain.
-    Replace with real slope data if available.
+    Higher slope = faster fire spread + more landslide risk.
     """
-    if elevation_m > 500:  return 80
-    if elevation_m > 200:  return 55
-    if elevation_m > 50:   return 30
-    return 15
-
-def landslide_history_score(count: int) -> int:
-    """More historical incidents nearby = higher risk"""
-    if count > 10: return 90
-    if count > 5:  return 70
-    if count > 1:  return 45
-    if count == 1: return 25
+    if elevation_m > 1000: return 85
+    if elevation_m > 500:  return 65
+    if elevation_m > 200:  return 40
+    if elevation_m > 50:   return 20
     return 10
 
-def calculate_risk(flood_zone: str, wildfire_hazard: str, elevation: float, landslide_count: int) -> dict:
-    # Sub-scores
-    fema     = FLOOD_ZONE_SCORES.get(flood_zone.upper(), 30)
-    elev     = elevation_score(elevation)
-    fire_raw = WILDFIRE_SCORES.get(wildfire_hazard, 30)
-    slope    = slope_proxy_score(elevation)
-    ls_hist  = landslide_history_score(landslide_count)
+def fire_distance_to_score(distance_km: float) -> int:
+    """Closer to historical fire perimeters = higher risk"""
+    if distance_km < 1:    return 95
+    if distance_km < 5:    return 80
+    if distance_km < 15:   return 55
+    if distance_km < 30:   return 30
+    return 10
 
-    # Component scores (0-100)
-    flood     = round(fema     * 0.60 + elev  * 0.40)
-    fire      = round(fire_raw * 0.50 + ls_hist * 0.30 + slope * 0.20)
-    landslide = round(slope    * 0.50 + elev  * 0.20 + ls_hist * 0.30)
+def landslide_count_to_score(count: int) -> int:
+    """More historical landslide incidents nearby = higher risk"""
+    if count > 10: return 90
+    if count > 5:  return 70
+    if count > 2:  return 50
+    if count == 1: return 30
+    return 10
+
+# ── Main scoring function ──────────────────────────────────────────────
+
+def calculate_risk(
+    flood_zone:       str,
+    wildfire_hazard:  str,
+    elevation:        float,
+    landslide_count:  int,
+    fire_distance_km: float = 999.0  # default = far away if not provided
+) -> dict:
+
+    # Raw factor scores (0-100)
+    fema        = FLOOD_ZONE_SCORES.get(flood_zone.upper(), 30)
+    elev        = elevation_to_score(elevation)
+    usfs        = WILDFIRE_HAZARD_SCORES.get(wildfire_hazard, 30)
+    fire_hist   = fire_distance_to_score(fire_distance_km)
+    slope       = slope_proxy_score(elevation)
+    ls_hist     = landslide_count_to_score(landslide_count)
+
+    # Component scores using our agreed formula
+    flood     = round(fema      * 0.60 + elev     * 0.40)
+    fire      = round(usfs      * 0.50 + fire_hist * 0.30 + slope * 0.20)
+    landslide = round(slope     * 0.50 + elev      * 0.20 + ls_hist * 0.30)
 
     # Overall weighted score
-    overall = round(flood * 0.35 + fire * 0.40 + landslide * 0.25)
+    overall   = round(flood * 0.35 + fire * 0.40 + landslide * 0.25)
 
     return {
         "flood":     flood,
@@ -71,10 +108,22 @@ def calculate_risk(flood_zone: str, wildfire_hazard: str, elevation: float, land
 
 # ── Test standalone ────────────────────────────────────────────────────
 if __name__ == "__main__":
-    result = calculate_risk(
-        flood_zone      = "AE",
-        wildfire_hazard = "Very High",
-        elevation       = 120.0,
-        landslide_count = 3
+    # High risk property — flood zone AE, very high wildfire, low elevation, close to fires
+    high_risk = calculate_risk(
+        flood_zone       = "AE",
+        wildfire_hazard  = "Very High",
+        elevation        = 20.0,
+        landslide_count  = 6,
+        fire_distance_km = 3.0
     )
-    print(result)
+    print("High risk property:", high_risk)
+
+    # Low risk property — zone X, low wildfire, high elevation, far from fires
+    low_risk = calculate_risk(
+        flood_zone       = "X",
+        wildfire_hazard  = "Low",
+        elevation        = 300.0,
+        landslide_count  = 0,
+        fire_distance_km = 50.0
+    )
+    print("Low risk property: ", low_risk)

@@ -31,7 +31,7 @@ Return absolutely nothing except the JSON object. No markdown, no backticks, no 
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.0-flash-lite",
+            model="gemini-2.5-flash",
             contents=prompt
         )
         raw = (response.text or "").strip()
@@ -58,6 +58,5 @@ Return absolutely nothing except the JSON object. No markdown, no backticks, no 
 # ── Test standalone ────────────────────────────────────────────────────
 if __name__ == "__main__":
     load_dotenv()
-    print("KEY:", os.getenv("GEMINI_KEY"))
     result = get_ai_analysis("123 Main St, Irvine CA", "AE", "Very High", 82, 74, 45)
     print(json.dumps(result, indent=2))
