@@ -1,4 +1,4 @@
-# Property Climate Risk Scorer
+# 🌎 ClimateCheck — Property Climate Risk Scorer
 
 A web app that scores any property's flood and wildfire risk using real climate data APIs and AI-generated explanations.
 
