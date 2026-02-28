@@ -1,5 +1,4 @@
 """
-YOU own this file.
 Input:  lat, lng, flood_zone (from FEMA), calfire_zone (from CalFire)
 Output: {"flood": int, "fire": int, "overall": int}  all scores 0-100
 """
