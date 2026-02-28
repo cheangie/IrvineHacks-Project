@@ -142,7 +142,7 @@ async def get_risk(address: str):
     flood_zone        = await get_flood_zone(lat, lng)
     wildfire_hazard   = await get_wildfire_hazard(lat, lng)
     elevation         = await get_elevation(lat, lng)
-    landslide_count   = await get_landslide_history(lat, lng)
+    landslide_count   = int(await get_landslide_history(lat, lng))
 
     # Your scoring formula
     scores = calculate_risk(
