@@ -66,19 +66,13 @@ async def geocode(address: str):
 #  SRISTI — Climate Risk API Calls
 # ══════════════════════════════════════════════════════════════
 
-# Known high flood risk counties (FEMA AE/AO zones prevalent)
 HIGH_FLOOD_COUNTIES = {
-    # Louisiana
     "Orleans", "Jefferson", "St. Bernard", "Plaquemines", "Terrebonne",
     "Lafourche", "St. Mary", "Iberia", "Cameron",
-    # Florida
     "Miami-Dade", "Broward", "Palm Beach", "Monroe", "Collier", "Lee",
     "Charlotte", "Sarasota", "Pinellas", "Hillsborough",
-    # Texas coast
     "Harris", "Galveston", "Brazoria", "Matagorda", "Jackson", "Victoria",
-    # California coast/rivers
     "Sacramento", "San Joaquin", "Fresno", "Tulare", "Kings",
-    # East Coast
     "New Hanover", "Brunswick", "Dare", "Carteret", "Onslow",
     "Atlantic", "Cape May", "Ocean", "Monmouth",
 }
@@ -91,9 +85,52 @@ MODERATE_FLOOD_COUNTIES = {
     "Middlesex", "Essex", "Suffolk",
 }
 
+HIGH_WILDFIRE_COUNTIES = {
+    "Ventura", "Santa Barbara", "San Luis Obispo", "Marin",
+    "Kern", "Tuolumne", "Calaveras", "Amador", "Butte", "Plumas", "Tehama",
+    "El Dorado", "Placer", "Nevada", "Shasta", "Trinity", "Humboldt",
+    "Mendocino", "Lake", "Napa", "Sonoma",
+    "Deschutes", "Klamath", "Douglas", "Josephine", "Jackson",
+    "Okanogan", "Chelan", "Yakima", "Ferry",
+    "Boulder", "Jefferson", "Clear Creek", "Gilpin", "Park", "Teller",
+    "El Paso", "Larimer", "Grand", "Summit", "Eagle", "Pitkin",
+    "Flathead", "Missoula", "Ravalli", "Fremont",
+    "Coconino", "Yavapai", "Gila", "Catron", "Grant", "Hidalgo",
+    "Travis", "Bastrop", "Caldwell", "Hays",
+}
+
+MODERATE_WILDFIRE_COUNTIES = {
+    "Los Angeles", "Orange", "San Diego", "Riverside", "San Bernardino",
+    "Santa Cruz", "Monterey", "San Mateo", "Contra Costa", "Alameda", "Santa Clara",
+    "King", "Pierce", "Snohomish", "Spokane",
+    "Arapahoe", "Douglas", "Weld",
+    "Harris", "Fort Bend", "Montgomery", "Galveston", "Brazoria",
+}
+
+HIGH_LANDSLIDE_COUNTIES = {
+    "Ventura", "Santa Barbara", "San Luis Obispo", "Marin", "Santa Cruz",
+    "Monterey", "San Mateo", "Humboldt", "Del Norte", "Trinity", "Mendocino",
+    "Los Angeles", "Orange", "San Bernardino", "Riverside", "San Diego",
+    "King", "Pierce", "Snohomish", "Whatcom", "Skagit", "Clallam", "Jefferson",
+    "Multnomah", "Clackamas", "Washington", "Hood River",
+    "Summit", "Eagle", "Pitkin", "Gunnison", "San Juan", "Ouray", "La Plata",
+    "Buncombe", "Henderson", "Haywood", "Jackson", "Macon", "Swain",
+    "Allegheny", "Fayette", "Westmoreland",
+    "Anchorage", "Juneau", "Ketchikan",
+}
+
+MODERATE_LANDSLIDE_COUNTIES = {
+    "El Dorado", "Placer", "Nevada", "Amador", "Tuolumne", "Mariposa",
+    "Shasta", "Tehama", "Glenn", "Lake",
+    "Spokane", "Kittitas", "Yakima", "Chelan",
+    "Jefferson", "Clear Creek", "Gilpin", "Boulder", "Larimer",
+    "Sevier", "Blount", "Monroe", "Polk", "Bradley",
+    "Kanawha", "Logan", "Mingo", "Wayne",
+}
+
+
 # 1. FEMA Flood Zone — with county-based fallback
 async def get_flood_zone(lat: float, lng: float, elevation: float = 100.0, county: str = "") -> str:
-    # Try FEMA first
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.get(
@@ -114,25 +151,24 @@ async def get_flood_zone(lat: float, lng: float, elevation: float = 100.0, count
     except Exception as e:
         print(f"FEMA error: {e}")
 
-    # Fallback — county-based flood zone estimate
     print(f"Using county-based flood zone fallback for: {county}")
     if county in HIGH_FLOOD_COUNTIES:
         if elevation < 0:  return "VE"
-        if elevation < 10: return "AE"
+        if elevation < 30: return "AE"
         return "A"
     if county in MODERATE_FLOOD_COUNTIES:
         if elevation < 5:  return "AE"
         if elevation < 30: return "B"
         return "X"
-    # Low risk — use elevation
     if elevation < 0:   return "VE"
     if elevation < 5:   return "AE"
     if elevation < 15:  return "A"
     if elevation < 50:  return "B"
     return "X"
 
-# 2. USFS Wildfire Hazard Potential
-async def get_wildfire_hazard(lat: float, lng: float) -> str:
+
+# 2. USFS Wildfire Hazard — with county-based fallback
+async def get_wildfire_hazard(lat: float, lng: float, county: str = "") -> str:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.get(
@@ -151,12 +187,16 @@ async def get_wildfire_hazard(lat: float, lng: float) -> str:
         if features:
             return features[0]["attributes"].get("WHP_CLASS", "Moderate")
     except Exception as e:
-        print(f"Wildfire error: {e}")
+        print(f"Wildfire API error: {e}")
+
+    print(f"Using county-based wildfire fallback for: {county}")
+    if county in HIGH_WILDFIRE_COUNTIES:   return "Very High"
+    if county in MODERATE_WILDFIRE_COUNTIES: return "High"
     return "Low"
 
-# 3. Elevation — Open Topo Data (free, no key, reliable)
+
+# 3. Elevation — Open Topo Data with USGS backup
 async def get_elevation(lat: float, lng: float) -> float:
-    # Try Open Topo Data first — free, no key, very accurate
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.get(
@@ -170,7 +210,6 @@ async def get_elevation(lat: float, lng: float) -> float:
     except Exception as e:
         print(f"OpenTopo error: {e}")
 
-    # Backup — USGS
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.get(
@@ -185,41 +224,9 @@ async def get_elevation(lat: float, lng: float) -> float:
 
     return 100.0
 
-# 4. Landslide Risk — county-based lookup + elevation fallback
-# Based on USGS landslide susceptibility data by county
-HIGH_LANDSLIDE_COUNTIES = {
-    # California
-    "Ventura", "Santa Barbara", "San Luis Obispo", "Marin", "Santa Cruz",
-    "Monterey", "San Mateo", "Humboldt", "Del Norte", "Trinity", "Mendocino",
-    "Los Angeles", "Orange", "San Bernardino", "Riverside", "San Diego",
-    # Pacific Northwest
-    "King", "Pierce", "Snohomish", "Whatcom", "Skagit", "Clallam", "Jefferson",
-    "Multnomah", "Clackamas", "Washington", "Hood River",
-    # Colorado/Rockies
-    "Summit", "Eagle", "Pitkin", "Gunnison", "San Juan", "Ouray", "La Plata",
-    # Appalachians
-    "Buncombe", "Henderson", "Haywood", "Jackson", "Macon", "Swain",
-    "Allegheny", "Fayette", "Westmoreland",
-    # Other high risk
-    "Anchorage", "Juneau", "Ketchikan",
-}
 
-MODERATE_LANDSLIDE_COUNTIES = {
-    # California foothills
-    "El Dorado", "Placer", "Nevada", "Amador", "Tuolumne", "Mariposa",
-    "Shasta", "Tehama", "Glenn", "Lake",
-    # Pacific Northwest inland
-    "Spokane", "Kittitas", "Yakima", "Chelan",
-    # Colorado Front Range
-    "Jefferson", "Clear Creek", "Gilpin", "Boulder", "Larimer",
-    # Tennessee/Virginia mountains
-    "Sevier", "Blount", "Monroe", "Polk", "Bradley",
-    # West Virginia
-    "Kanawha", "Logan", "Mingo", "Wayne",
-}
-
+# 4. Landslide — county-based lookup + elevation fallback
 async def get_landslide_history(lat: float, lng: float, elevation: float = 100.0, county: str = "") -> int:
-    # Try USGS API first
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.get(
@@ -242,23 +249,21 @@ async def get_landslide_history(lat: float, lng: float, elevation: float = 100.0
     except Exception as e:
         print(f"Landslide API error: {e}")
 
-    # Fallback — county-based lookup using known geological data
     print(f"Using county-based landslide fallback for: {county}")
     if county in HIGH_LANDSLIDE_COUNTIES:
-        # Use elevation to further refine within high-risk counties
         if elevation > 300: return 12
         if elevation > 100: return 8
-        return 5  # even coastal high-risk counties have some landslide history
+        return 5
     if county in MODERATE_LANDSLIDE_COUNTIES:
         if elevation > 500: return 6
         if elevation > 200: return 3
         return 1
-    # Low risk — use elevation only
     if elevation > 1000: return 4
     if elevation > 500:  return 2
     return 0
 
-# 5. NIFC Historical Fire Perimeter Distance
+
+# 5. NIFC Fire Perimeter Distance
 async def get_fire_distance(lat: float, lng: float) -> float:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -302,9 +307,9 @@ async def get_fire_distance(lat: float, lng: float) -> float:
         print(f"Fire distance error: {e}")
     return 999.0
 
-# 6. SRISTI BONUS — NOAA Active Weather Alerts
+
+# 6. NOAA Active Weather Alerts
 async def get_noaa_alerts(lat: float, lng: float) -> list:
-    """Returns list of active flood/weather alerts from NOAA. Bonus data point."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             res = await client.get(
@@ -330,19 +335,21 @@ async def get_noaa_alerts(lat: float, lng: float) -> list:
 def home():
     return {"message": "ClimateCheck API is running!"}
 
+@app.get("/debug")
+async def debug(lat: float, lng: float):
+    elev = await get_elevation(lat, lng)
+    return {"elevation": elev}
+
 @app.get("/risk")
 async def get_risk(address: str):
-    # Geocode first (needed for everything else)
     location = await geocode(address)
     lat, lng = location["lat"], location["lng"]
 
-    # Get elevation first — needed for flood + landslide fallbacks
     elevation = await get_elevation(lat, lng)
 
-    # Run remaining 5 API calls in parallel
     flood_zone, wildfire_hazard, landslide_count, fire_distance_km, noaa_alerts = await asyncio.gather(
         get_flood_zone(lat, lng, elevation, location["county"]),
-        get_wildfire_hazard(lat, lng),
+        get_wildfire_hazard(lat, lng, location["county"]),
         get_landslide_history(lat, lng, elevation, location["county"]),
         get_fire_distance(lat, lng),
         get_noaa_alerts(lat, lng),

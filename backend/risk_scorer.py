@@ -58,10 +58,12 @@ def slope_proxy_score(elevation_m: float) -> int:
 
 def fire_distance_to_score(distance_km: float) -> int:
     """Closer to historical fire perimeters = higher risk"""
-    if distance_km < 1:    return 95
+    if distance_km < 1:    return 98
+    if distance_km < 2:    return 90   # ← 1.56km should hit this
     if distance_km < 5:    return 80
-    if distance_km < 15:   return 55
-    if distance_km < 30:   return 30
+    if distance_km < 10:   return 60
+    if distance_km < 20:   return 40
+    if distance_km < 30:   return 25
     return 10
 
 def landslide_count_to_score(count: int) -> int:
@@ -93,23 +95,32 @@ def calculate_risk(
 
     # Component scores using our agreed formula
     flood     = round(fema      * 0.60 + elev     * 0.40)
-    fire      = round(usfs      * 0.60 + fire_hist * 0.30 + slope * 0.10)
+    fire      = round(usfs      * 0.40 + fire_hist * 0.45 + slope * 0.15)
     landslide = round(slope     * 0.50 + elev      * 0.20 + ls_hist * 0.30)
 
-    # Cap fire score when USFS zone is Low — slope shouldn't override zone rating
-    if wildfire_hazard == "Low":
+    # Only cap fire score for Low zones if fire distance is also far
+    if wildfire_hazard == "Low" and fire_distance_km > 20:
         fire = min(fire, 25)
 
-    # Overall — dynamic weighting based on dominant risk
-    # Instead of fixed weights, boost the highest scoring risk
+    # Overall — dynamic weighting, dominant risk gets strong emphasis
     scores_list = [("flood", flood), ("fire", fire), ("landslide", landslide)]
     scores_list.sort(key=lambda x: x[1], reverse=True)
     dominant = scores_list[0][1]
     second   = scores_list[1][1]
     third    = scores_list[2][1]
 
-    # Dominant risk gets 50%, second 30%, third 20%
-    overall = round(dominant * 0.50 + second * 0.30 + third * 0.20)
+    overall = round(dominant * 0.55 + second * 0.30 + third * 0.15)
+
+    # Boost for red scores (≥ 70)
+    red_count = sum(1 for s in [flood, fire, landslide] if s >= 70)
+    yellow_count = sum(1 for s in [flood, fire, landslide] if 40 <= s < 70)
+
+    if red_count >= 2:
+        overall = min(100, round(overall * 1.20))   # two red scores → big boost
+    elif red_count == 1 and yellow_count >= 1:
+        overall = min(100, round(overall * 1.15))   # one red + one yellow → medium boost
+    elif red_count == 1:
+        overall = min(100, round(overall * 1.10))   # one red alone → small boost
 
     return {
         "flood":     flood,
