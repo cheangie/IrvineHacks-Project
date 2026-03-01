@@ -39,7 +39,7 @@ export default function Home() {
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="Enter a property address (e.g. 123 Main St, Irvine, CA, 92617)"
+                placeholder="e.g. 123 Main St, Irvine, CA, 92617"
                 className="flex-1 px-6 py-4 text-lg rounded-xl bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0d9488]"
               />
               <button
@@ -50,6 +50,9 @@ export default function Home() {
                 Analyze Property
               </button>
             </div>
+            <p className="text-sm text-gray-500 mt-2">
+              Format: <span className="font-medium text-gray-700">Street Address, City, State, Zip</span>
+            </p>
           </form>
 
           {/* Compare Second Property */}

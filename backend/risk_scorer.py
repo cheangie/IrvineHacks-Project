@@ -66,7 +66,8 @@ def fire_distance_to_score(distance_km: float) -> int:
 
 def landslide_count_to_score(count: int) -> int:
     """More historical landslide incidents nearby = higher risk"""
-    if count > 10: return 90
+    if count > 10: return 95
+    if count > 7:  return 85
     if count > 5:  return 70
     if count > 2:  return 50
     if count == 1: return 30
@@ -99,8 +100,16 @@ def calculate_risk(
     if wildfire_hazard == "Low":
         fire = min(fire, 25)
 
-    # Overall weighted score
-    overall   = round(flood * 0.35 + fire * 0.40 + landslide * 0.25)
+    # Overall — dynamic weighting based on dominant risk
+    # Instead of fixed weights, boost the highest scoring risk
+    scores_list = [("flood", flood), ("fire", fire), ("landslide", landslide)]
+    scores_list.sort(key=lambda x: x[1], reverse=True)
+    dominant = scores_list[0][1]
+    second   = scores_list[1][1]
+    third    = scores_list[2][1]
+
+    # Dominant risk gets 50%, second 30%, third 20%
+    overall = round(dominant * 0.50 + second * 0.30 + third * 0.20)
 
     return {
         "flood":     flood,
