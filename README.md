@@ -10,9 +10,9 @@ A web app that scores any property's flood and wildfire risk using real climate 
 IRVINEHACKS-PROJECT/
 ├── backend/
 │   ├── main.py            ← Nivedha (Melissa) + Sristi (FEMA/CalFire)
-│   ├── risk_scorer.py     ← You — scoring formula
+│   ├── risk_scorer.py     ← Angie — scoring formula
 │   ├── ai_service.py      ← Cathryn — Gemini AI
-│   ├── .env               ← API keys — YOU MUST CREATE THIS (not in repo)
+│   ├── .env               ← API keys
 │   └── requirements.txt
 ├── frontend/
 │   ├── index.html
@@ -20,17 +20,6 @@ IRVINEHACKS-PROJECT/
 │   └── app.js
 └── .gitignore
 ```
-
----
-
-## 👥 Who Works On What
-
-| Person | File | Task |
-|---|---|---|
-| You | `risk_scorer.py` | Converts raw zone data into 0-100 risk scores |
-| Nivedha | `main.py` → `geocode()` | Melissa API — address to lat/lng |
-| Sristi | `main.py` → `get_flood_zone()` + `get_calfire_zone()` | FEMA + CalFire API calls |
-| Cathryn | `ai_service.py` | Gemini AI — explanation, probabilities, recommendations |
 
 ---
 
